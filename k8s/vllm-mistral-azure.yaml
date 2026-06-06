@@ -1,0 +1,110 @@
+# Azure AKS — Mistral-7B-Instruct served by vLLM on NV6ads_A10_v5 (NVIDIA A10)
+# Apply to the AKS context:
+#   az aks get-credentials --resource-group llm-router-rg --name llm-router-aks
+#   kubectl apply -f k8s/vllm-mistral-azure.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-mistral-7b
+  namespace: llm-serving
+  labels:
+    app: vllm-mistral-7b
+    cloud: azure
+    model: mistral-7b
+    project: llm-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-mistral-7b
+  template:
+    metadata:
+      labels:
+        app: vllm-mistral-7b
+        cloud: azure
+        model: mistral-7b
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.4.2
+        args:
+          - "--model"
+          - "mistralai/Mistral-7B-Instruct-v0.2"
+          - "--port"
+          - "8000"
+          - "--tensor-parallel-size"
+          - "1"
+          - "--max-model-len"
+          - "4096"
+          - "--gpu-memory-utilization"
+          - "0.90"
+          - "--disable-log-requests"
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        resources:
+          requests:
+            memory: "14Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "22Gi"
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: model-cache
+        emptyDir: {}
+      nodeSelector:
+        workload-type: gpu-inference
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-mistral-7b-svc
+  namespace: llm-serving
+  labels:
+    app: vllm-mistral-7b
+    cloud: azure
+spec:
+  type: LoadBalancer
+  selector:
+    app: vllm-mistral-7b
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP

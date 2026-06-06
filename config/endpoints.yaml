@@ -1,0 +1,40 @@
+# Endpoint configuration for the Multi-Cloud LLM Router
+# Fill in the URL values after running: terraform apply + kubectl apply
+# Run `terraform output` to get the LoadBalancer IPs/hostnames.
+
+endpoints:
+  aws:
+    mistral-7b:
+      url: "http://REPLACE_AWS_MISTRAL_LB/v1"          # aws eks get-token → LoadBalancer
+      model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    llama-13b:
+      url: "http://REPLACE_AWS_LLAMA_LB/v1"
+      model_id: "meta-llama/Llama-2-13b-chat-hf"
+
+  azure:
+    mistral-7b:
+      url: "http://REPLACE_AZURE_MISTRAL_LB/v1"
+      model_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    llama-13b:
+      url: "http://REPLACE_AZURE_LLAMA_LB/v1"
+      model_id: "meta-llama/Llama-2-13b-chat-hf"
+
+# Prometheus /metrics endpoints (one per vLLM pod/service)
+prometheus:
+  aws:
+    mistral-7b: "http://REPLACE_AWS_MISTRAL_LB/metrics"
+    llama-13b:  "http://REPLACE_AWS_LLAMA_LB/metrics"
+  azure:
+    mistral-7b: "http://REPLACE_AZURE_MISTRAL_LB/metrics"
+    llama-13b:  "http://REPLACE_AZURE_LLAMA_LB/metrics"
+
+# Redis for shared telemetry state (run: docker run -p 6379:6379 redis:7)
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+
+# Router microservice (used by Locust)
+router_service:
+  host: "0.0.0.0"
+  port: 8080

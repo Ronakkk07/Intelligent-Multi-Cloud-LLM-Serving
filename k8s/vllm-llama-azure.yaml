@@ -1,0 +1,107 @@
+# Azure AKS — Llama-2-13B-Chat served by vLLM on NV6ads_A10_v5 (NVIDIA A10)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-llama-13b
+  namespace: llm-serving
+  labels:
+    app: vllm-llama-13b
+    cloud: azure
+    model: llama-13b
+    project: llm-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-llama-13b
+  template:
+    metadata:
+      labels:
+        app: vllm-llama-13b
+        cloud: azure
+        model: llama-13b
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.4.2
+        args:
+          - "--model"
+          - "meta-llama/Llama-2-13b-chat-hf"
+          - "--port"
+          - "8000"
+          - "--tensor-parallel-size"
+          - "1"
+          - "--max-model-len"
+          - "4096"
+          - "--gpu-memory-utilization"
+          - "0.90"
+          - "--disable-log-requests"
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        resources:
+          requests:
+            memory: "22Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "28Gi"
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 240
+          periodSeconds: 30
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: model-cache
+        emptyDir: {}
+      nodeSelector:
+        workload-type: gpu-inference
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-llama-13b-svc
+  namespace: llm-serving
+  labels:
+    app: vllm-llama-13b
+    cloud: azure
+spec:
+  type: LoadBalancer
+  selector:
+    app: vllm-llama-13b
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
