@@ -1,0 +1,7 @@
+idx,bucket,input_tokens,output_tokens,total_tokens,overhead_ms,latency_ms,measured_cost_per_1k,success
+0,medium,315,32,347,0.0367,8946.5,0.00068753,True
+1,short,55,32,87,0.0476,3275.8,0.00100408,True
+2,short,65,32,97,0.0227,3379.7,0.00092913,True
+3,medium,186,32,218,0.0243,6246.1,0.00076405,True
+4,short,47,32,79,0.0325,3419.9,0.0011544,True
+5,medium,249,32,281,0.0251,7231.4,0.00068625,True

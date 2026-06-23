@@ -1,0 +1,1 @@
+ERROR: Cannot find user or service principal in graph database for 'ronakrajput.ire@gmail.com'. If the assignee is an appId, make sure the corresponding service principal is created with 'az ad sp create --id ronakrajput.ire@gmail.com'.

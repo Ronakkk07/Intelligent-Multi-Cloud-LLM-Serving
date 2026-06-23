@@ -1,0 +1,99 @@
+# GPU Ollama deployment on AKS NC4as_T4_v3 (NVIDIA T4 16GB).
+# Serves OpenAI-compatible /v1/chat/completions.
+# Model: mistral (Mistral-7B, ~4.1GB VRAM) — matches paper methodology.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-gpu
+  namespace: llm-serving
+  labels:
+    app: ollama-gpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ollama-gpu
+  template:
+    metadata:
+      labels:
+        app: ollama-gpu
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Equal"
+          value: "true"
+          effect: "NoSchedule"
+      nodeSelector:
+        workload-type: gpu-inference
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              SERVE_PID=$!
+              echo "Waiting for Ollama to initialise..."
+              sleep 15
+              echo "Pulling mistral..."
+              ollama pull mistral
+              echo "Model ready."
+              wait $SERVE_PID
+          ports:
+            - containerPort: 11434
+          env:
+            - name: OLLAMA_MODELS
+              value: /models
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "1"
+              memory: "4Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "4"
+              memory: "12Gi"
+              nvidia.com/gpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: models
+          emptyDir:
+            sizeLimit: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-gpu-svc
+  namespace: llm-serving
+  labels:
+    app: ollama-gpu
+spec:
+  type: LoadBalancer
+  selector:
+    app: ollama-gpu
+  ports:
+    - name: http
+      port: 80
+      targetPort: 11434

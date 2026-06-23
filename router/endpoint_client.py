@@ -25,16 +25,23 @@ log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # On-demand cost estimates (USD / 1k tokens)
-# Source: AWS g5.xlarge $1.006/hr, Azure NV6ads_A10_v5 $0.454/hr (May 2025)
-# Mistral-7B throughput on A10G  ~1 500 tok/s → 5.4 M tok/hr
-# Llama-2-13B throughput on A10G ~  650 tok/s → 2.34M tok/hr
+# GPU baseline — used for final experiments with NC4as_T4_v3 / g5.xlarge:
+#   AWS g5.xlarge $1.006/hr, Azure NV6ads_A10_v5 $0.454/hr
+#   Mistral-7B A10G throughput ~1500 tok/s → 5.4M tok/hr
+#   Llama-2-13B A10G throughput ~650 tok/s  → 2.34M tok/hr
+# CPU baseline — used for Azure during CPU-only development phase:
+#   Azure Standard_D2ds_v7 $0.096/hr
+#   TinyLlama-1.1B CPU throughput ~15 tok/s → 54k tok/hr
 # cost_per_1k = (instance_$/hr) / (tok/hr) * 1000
 # ---------------------------------------------------------------------------
 ON_DEMAND_COST_PER_1K: dict[tuple[str, str], float] = {
+    # GPU (final experiments)
     ("aws",   "mistral-7b"): round(1.006 / 5_400_000 * 1_000, 6),   # ≈ $0.000186
     ("aws",   "llama-13b"):  round(1.006 / 2_340_000 * 1_000, 6),   # ≈ $0.000430
     ("azure", "mistral-7b"): round(0.454 / 5_400_000 * 1_000, 6),   # ≈ $0.000084
     ("azure", "llama-13b"):  round(0.454 / 2_340_000 * 1_000, 6),   # ≈ $0.000194
+    # CPU dev phase — Azure D2ds_v7 running TinyLlama via Ollama
+    ("azure", "tinyllama"):  round(0.096 / 54_000 * 1_000, 6),      # ≈ $0.001778
 }
 
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "endpoints.yaml"

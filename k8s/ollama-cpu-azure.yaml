@@ -1,0 +1,99 @@
+# CPU-based Ollama deployment on AKS (Standard_D2ds_v7, no GPU required).
+# Serves OpenAI-compatible /v1/chat/completions — router code unchanged.
+# Model: tinyllama (637MB) fits comfortably in 8GB RAM.
+# Switch to --gpu variant (NC4as_T4_v3 node pool) for final experiments.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-cpu
+  namespace: llm-serving
+  labels:
+    app: ollama-cpu
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ollama-cpu
+  template:
+    metadata:
+      labels:
+        app: ollama-cpu
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+        - name: ollama
+          # Pinned: ollama 0.30.x segfaults during model warmup on this
+          # AKS node's CPU (Xeon 6973P-C). 0.23.2 uses a stable GGML build
+          # that serves tinyllama on CPU without crashing. Do not bump to
+          # :latest without re-validating inference on the live endpoint.
+          image: ollama/ollama:0.23.2
+          # Start server, wait for it, pull model, then keep serving.
+          # $! captures the server PID so wait keeps the container alive.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              SERVE_PID=$!
+              echo "Waiting for Ollama to initialise..."
+              sleep 10
+              echo "Pulling tinyllama..."
+              ollama pull tinyllama
+              echo "Model ready."
+              wait $SERVE_PID
+          ports:
+            - containerPort: 11434
+          env:
+            - name: OLLAMA_MODELS
+              value: /models
+            - name: OLLAMA_HOST
+              value: "0.0.0.0"
+            - name: OLLAMA_CPU_CAPABILITY
+              value: "avx2"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "2Gi"
+            limits:
+              cpu: "2"
+              memory: "6Gi"
+          # Readiness only passes after /api/tags returns 200 (model listed).
+          readinessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 18
+          livenessProbe:
+            httpGet:
+              path: /api/tags
+              port: 11434
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: models
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-cpu-svc
+  namespace: llm-serving
+  labels:
+    app: ollama-cpu
+spec:
+  type: LoadBalancer
+  selector:
+    app: ollama-cpu
+  ports:
+    - name: http
+      port: 80
+      targetPort: 11434
